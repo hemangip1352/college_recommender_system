@@ -26,6 +26,8 @@ model College {
   placementScore         Float     @default(0)
   industryExposureScore  Float     @default(0)
   homeUniversitySeats    Boolean   @default(true)  // true = college belongs to a university that has HU quota seats
+  averagePackage         Float?    // Verified headline average CTC (₹/year) — manual override; takes precedence over Placement table
+  highestPackage         Float?    // Verified headline highest CTC (₹/year) — manual override; takes precedence over Placement table
 
   branches    Branch[]
   cutoffs     Cutoff[]

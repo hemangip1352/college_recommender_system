@@ -13,6 +13,10 @@
     "db:generate": "prisma generate",
     "db:studio": "prisma studio",
     "db:validate": "prisma validate",
+    "etl:pipeline": "python scripts/run_pipeline.py",
+    "etl:pipeline:dry": "python scripts/run_pipeline.py --dry-run",
+    "etl:reviews": "python scripts/batch_scraper.py",
+    "etl:reviews:dry": "python scripts/batch_scraper.py --dry-run",
     "ingest:pdf": "python scripts/dte_pdf_parser.py",
     "ingest:reviews": "python scripts/review_scraper.py"
   },

@@ -1,0 +1,65 @@
+[
+  {
+    "year": 2025,
+    "round": 1,
+    "source_type": "local",
+    "path": "data/pdfs/cap_1_2025.pdf",
+    "description": "CAP Round 1 Final Merit List – Academic Year 2025-26"
+  },
+  {
+    "year": 2025,
+    "round": 2,
+    "source_type": "local",
+    "path": "data/pdfs/cap_2_2025.pdf",
+    "description": "CAP Round 2 Final Merit List – Academic Year 2025-26"
+  },
+  {
+    "year": 2025,
+    "round": 3,
+    "source_type": "local",
+    "path": "data/pdfs/cap_3_2025.pdf",
+    "description": "CAP Round 3 Final Merit List – Academic Year 2025-26"
+  },
+  {
+    "year": 2024,
+    "round": 1,
+    "source_type": "local",
+    "path": "data/pdfs/cap_1_2024.pdf",
+    "description": "CAP Round 1 Final Merit List – Academic Year 2024-25"
+  },
+  {
+    "year": 2024,
+    "round": 2,
+    "source_type": "local",
+    "path": "data/pdfs/cap_2_2024.pdf",
+    "description": "CAP Round 2 Final Merit List – Academic Year 2024-25"
+  },
+  {
+    "year": 2024,
+    "round": 3,
+    "source_type": "local",
+    "path": "data/pdfs/cap_3_2024.pdf",
+    "description": "CAP Round 3 Final Merit List – Academic Year 2024-25"
+  },
+  {
+    "year": 2023,
+    "round": 1,
+    "source_type": "local",
+    "path": "data/pdfs/cap_1_2023.pdf",
+    "description": "CAP Round 1 Final Merit List – Academic Year 2023-24"
+  },
+  {
+    "year": 2023,
+    "round": 2,
+    "source_type": "local",
+    "path": "data/pdfs/cap_2_2023.pdf",
+    "description": "CAP Round 2 Final Merit List – Academic Year 2023-24"
+  },
+  {
+    "year": 2023,
+    "round": 3,
+    "source_type": "local",
+    "path": "data/pdfs/cap_3_2023.pdf",
+    "description": "CAP Round 3 Final Merit List – Academic Year 2023-24"
+  }
+]

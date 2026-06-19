@@ -1,13 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import Link from "next/link";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -16,24 +11,22 @@ import {
   formatPackage,
   type CutoffWithBranch,
   type PlacementData,
+  type StudentFeedback,
 } from "@/lib/filtering-engine";
 import {
-  ExternalLink,
   Info,
   TrendingUp,
   MessageSquare,
   Home,
   Globe,
+  Award,
+  DollarSign,
+  Star,
 } from "lucide-react";
 
-// ---------------------------------------------------------------------------
+// ============================================================================
 // Interfaces
-// ---------------------------------------------------------------------------
-
-interface StudentFeedback {
-  summary: string;
-  sentimentScore: number; // 0–1: > 0.6 positive, < 0.4 negative, else neutral
-}
+// ============================================================================
 
 interface CollegeResult {
   collegeId: number;
@@ -49,6 +42,7 @@ interface CollegeResult {
   applicablePercentile: number;
   matchedSeatType: string;
   isHomeUniversity: boolean;
+  /** ALL CAP rounds across 3 years — pivoted into matrix in the UI */
   historicalCutoffs: CutoffWithBranch[];
   score: number;
   placementScore: number;
@@ -57,7 +51,7 @@ interface CollegeResult {
   teachingScore: number;
   industryExposureScore: number;
   placementData: PlacementData | null;
-  studentFeedback?: StudentFeedback;
+  studentFeedback: StudentFeedback | null;
 }
 
 interface CollegeResultsProps {
@@ -67,28 +61,59 @@ interface CollegeResultsProps {
   onCompare: (collegeIds: number[]) => void;
 }
 
-// ---------------------------------------------------------------------------
-// Top-level Results Component
-// ---------------------------------------------------------------------------
+// ============================================================================
+// CAP Round Matrix — Pivot Helper
+// ============================================================================
 
-export function CollegeResults({
-  dream,
-  target,
-  safe,
-  onCompare,
-}: CollegeResultsProps) {
-  const [selectedForComparison, setSelectedForComparison] = useState<number[]>(
-    []
-  );
+/**
+ * Given a flat list of historical cutoffs (all rounds, all years),
+ * build a pivot structure:
+ *   Map<year, Map<round, CutoffWithBranch>>
+ *
+ * This enables rendering a table like:
+ *   Year | Round 1 | Round 2 | Round 3
+ *   2025 | 98.24   | 97.90   | 97.55
+ *   2024 | 97.80   | 97.10   | —
+ */
+function buildRoundMatrix(
+  cutoffs: CutoffWithBranch[]
+): { years: number[]; rounds: number[]; matrix: Map<number, Map<number, CutoffWithBranch>> } {
+  const matrix = new Map<number, Map<number, CutoffWithBranch>>();
+
+  for (const c of cutoffs) {
+    if (!matrix.has(c.year)) matrix.set(c.year, new Map());
+    // If multiple branches for same year+round, keep the one closest to the student
+    // (first occurrence wins — cutoffs are already sorted year DESC, round ASC)
+    if (!matrix.get(c.year)!.has(c.round)) {
+      matrix.get(c.year)!.set(c.round, c);
+    }
+  }
+
+  const years = [...matrix.keys()].sort((a, b) => b - a); // Descending
+  const roundsSet = new Set<number>();
+  for (const yearMap of matrix.values()) {
+    for (const r of yearMap.keys()) roundsSet.add(r);
+  }
+  const rounds = [...roundsSet].sort(); // Ascending (1, 2, 3)
+
+  return { years, rounds, matrix };
+}
+
+// ============================================================================
+// Top-Level Results Component
+// ============================================================================
+
+export function CollegeResults({ dream, target, safe, onCompare }: CollegeResultsProps) {
+  const [selectedForComparison, setSelectedForComparison] = useState<number[]>([]);
 
   const toggleSelection = (collegeId: number) => {
-    if (selectedForComparison.includes(collegeId)) {
-      setSelectedForComparison(
-        selectedForComparison.filter((id) => id !== collegeId)
-      );
-    } else if (selectedForComparison.length < 3) {
-      setSelectedForComparison([...selectedForComparison, collegeId]);
-    }
+    setSelectedForComparison((prev) =>
+      prev.includes(collegeId)
+        ? prev.filter((id) => id !== collegeId)
+        : prev.length < 3
+        ? [...prev, collegeId]
+        : prev
+    );
   };
 
   const renderTierSection = (
@@ -97,14 +122,12 @@ export function CollegeResults({
     colleges: CollegeResult[]
   ) => {
     if (colleges.length === 0) return null;
-
     return (
       <div key={tier} className="space-y-4">
         <div className="flex items-center gap-2">
           <h2 className="text-2xl font-bold">{title}</h2>
           <Badge variant="outline">{colleges.length} colleges</Badge>
         </div>
-
         <div className="grid gap-4">
           {colleges.map((college) => (
             <CollegeCard
@@ -125,29 +148,23 @@ export function CollegeResults({
     <div className="space-y-8">
       {/* Summary bar */}
       <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-        <h3 className="font-semibold text-blue-900 mb-1">Summary</h3>
+        <h3 className="font-semibold text-blue-900 mb-1">Results Summary</h3>
         <p className="text-blue-800">
-          Found <span className="font-bold">{totalColleges}</span> colleges
-          matching your profile:{" "}
-          <span className="font-bold">{dream.length}</span> Dream,{" "}
+          Found <span className="font-bold">{totalColleges}</span> colleges matching your
+          profile: <span className="font-bold">{dream.length}</span> Dream,{" "}
           <span className="font-bold">{target.length}</span> Target, and{" "}
           <span className="font-bold">{safe.length}</span> Safe options.
         </p>
       </div>
 
-      {/* Comparison action bar */}
+      {/* Comparison bar */}
       {selectedForComparison.length > 0 && (
         <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 flex justify-between items-center">
           <p className="text-amber-800">
-            <span className="font-bold">{selectedForComparison.length}</span>{" "}
-            college
-            {selectedForComparison.length !== 1 ? "s" : ""} selected for
-            comparison (max 3)
+            <span className="font-bold">{selectedForComparison.length}</span> college
+            {selectedForComparison.length !== 1 ? "s" : ""} selected for comparison (max 3)
           </p>
-          <Button
-            onClick={() => onCompare(selectedForComparison)}
-            variant="default"
-          >
+          <Button onClick={() => onCompare(selectedForComparison)}>
             Compare Selected
           </Button>
         </div>
@@ -159,10 +176,13 @@ export function CollegeResults({
 
       {totalColleges === 0 && (
         <Card>
-          <CardContent className="pt-6 text-center">
-            <p className="text-muted-foreground">
-              No colleges found matching your criteria. Try adjusting your
-              preferences or selecting more branches.
+          <CardContent className="pt-6 text-center py-12">
+            <p className="text-muted-foreground text-base">
+              No colleges found matching your criteria.
+            </p>
+            <p className="text-sm text-muted-foreground mt-2">
+              Try selecting more branches, enabling "All Maharashtra", or adjusting
+              your MHT-CET percentile range.
             </p>
           </CardContent>
         </Card>
@@ -171,9 +191,9 @@ export function CollegeResults({
   );
 }
 
-// ---------------------------------------------------------------------------
+// ============================================================================
 // College Card
-// ---------------------------------------------------------------------------
+// ============================================================================
 
 interface CollegeCardProps {
   college: CollegeResult;
@@ -184,131 +204,183 @@ interface CollegeCardProps {
 function CollegeCard({ college, isSelected, onSelect }: CollegeCardProps) {
   const [showFullSummary, setShowFullSummary] = useState(false);
 
-  const sentimentBadge = getSentimentBadge(
-    college.studentFeedback?.sentimentScore
+  // Pre-compute the round matrix so JSX stays clean
+  const { years, rounds, matrix } = useMemo(
+    () => buildRoundMatrix(college.historicalCutoffs),
+    [college.historicalCutoffs]
   );
+
+  const sentimentMeta = getSentimentMeta(college.studentFeedback?.sentimentScore);
+  const hasMatrix = years.length > 0 && rounds.length > 0;
 
   return (
     <Card
       className={`transition-all ${
         isSelected
-          ? "ring-2 ring-blue-500 bg-blue-50"
+          ? "ring-2 ring-blue-500 bg-blue-50/40"
           : "hover:shadow-lg hover:-translate-y-0.5"
       }`}
     >
-      <CardHeader>
+      {/* ------------------------------------------------------------------ */}
+      {/*  HEADER                                                             */}
+      {/* ------------------------------------------------------------------ */}
+      <CardHeader className="pb-3">
         <div className="flex justify-between items-start gap-4">
-          <div className="flex-1">
-            {/* College name + tier badge */}
+          <div className="flex-1 min-w-0">
+            {/* Name + badges row */}
             <div className="flex items-center flex-wrap gap-2 mb-1">
-              <CardTitle className="text-lg">{college.collegeName}</CardTitle>
+              <CardTitle className="text-lg leading-tight">
+                {college.collegeName}
+              </CardTitle>
+
+              {/* Tier badge */}
               <Badge
-                style={{
-                  backgroundColor: getTierColor(college.tier),
-                  color: "white",
-                }}
+                style={{ backgroundColor: getTierColor(college.tier), color: "white" }}
               >
                 {getTierLabel(college.tier)}
               </Badge>
+
               {/* HU / OHU badge */}
               <Badge
                 variant="outline"
-                className="text-xs"
+                className="text-xs shrink-0"
                 title={
                   college.isHomeUniversity
-                    ? "You are eligible for Home University seats at this college"
-                    : "You compete on Outside Home University (OHU) seats at this college"
+                    ? "Eligible for Home University (HU) reserved seats"
+                    : "Competing on Outside Home University (OHU) open seats"
                 }
               >
                 {college.isHomeUniversity ? (
-                  <><Home className="w-3 h-3 mr-1" />HU Seats</>
+                  <><Home className="w-3 h-3 mr-1 inline" />HU</>
                 ) : (
-                  <><Globe className="w-3 h-3 mr-1" />OHU Seats</>
+                  <><Globe className="w-3 h-3 mr-1 inline" />OHU</>
                 )}
               </Badge>
             </div>
-            <p className="text-sm text-muted-foreground">
-              Code: {college.collegeCode} | {college.city} |{" "}
-              {college.university}
+
+            <p className="text-sm text-muted-foreground truncate">
+              Code: {college.collegeCode} · {college.city} · {college.university}
             </p>
             <p className="text-xs text-muted-foreground mt-0.5">
-              Seat type: <span className="font-mono">{college.matchedSeatType}</span>
+              Seat type:{" "}
+              <span className="font-mono text-foreground/70">
+                {college.matchedSeatType}
+              </span>
             </p>
           </div>
 
-          {/* Match score */}
-          <div className="text-right shrink-0">
-            <p className="text-2xl font-bold text-blue-600">
-              {college.score.toFixed(1)}
-            </p>
-            <p className="text-xs text-muted-foreground">Match Score</p>
+          {/* Match score pill */}
+          <div className="text-center shrink-0">
+            <div className="w-14 h-14 rounded-full bg-blue-600 text-white flex flex-col items-center justify-center shadow">
+              <span className="text-lg font-bold leading-none">
+                {college.score.toFixed(0)}
+              </span>
+              <span className="text-[9px] leading-none opacity-80 mt-0.5">SCORE</span>
+            </div>
           </div>
         </div>
       </CardHeader>
 
-      <CardContent className="space-y-5">
-        {/* ----------------------------------------------------------------
-            Section 1 — Cutoff History Table (3 years)
-        ---------------------------------------------------------------- */}
+      <CardContent className="space-y-5 pt-0">
+
+        {/* ================================================================ */}
+        {/* SECTION 1 — CAP Round Cutoff Matrix                              */}
+        {/* ================================================================ */}
         <div>
-          <h4 className="text-sm font-semibold mb-2 flex items-center gap-1">
-            <TrendingUp className="w-4 h-4" /> Cutoff History (Your Category)
+          <h4 className="text-sm font-semibold mb-2 flex items-center gap-1.5">
+            <TrendingUp className="w-4 h-4 text-blue-500" />
+            CAP Round Cutoff History (Your Category)
           </h4>
 
-          {college.historicalCutoffs.length > 0 ? (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm border-collapse">
+          {hasMatrix ? (
+            <div className="overflow-x-auto rounded-lg border border-border">
+              <table className="w-full text-xs border-collapse">
                 <thead>
-                  <tr className="bg-muted text-muted-foreground text-xs">
-                    <th className="text-left px-3 py-2 font-medium rounded-tl-md">
+                  <tr className="bg-muted/60">
+                    <th className="text-left px-3 py-2 font-semibold text-muted-foreground w-16">
                       Year
                     </th>
-                    <th className="text-left px-3 py-2 font-medium">Branch</th>
-                    <th className="text-right px-3 py-2 font-medium">
-                      Percentile
-                    </th>
-                    <th className="text-right px-3 py-2 font-medium rounded-tr-md">
-                      Rank
+                    {rounds.map((r) => (
+                      <th
+                        key={r}
+                        className="text-right px-3 py-2 font-semibold text-muted-foreground"
+                      >
+                        Round {r}
+                      </th>
+                    ))}
+                    <th className="text-right px-3 py-2 font-semibold text-muted-foreground">
+                      Rank (R{Math.max(...rounds)})
                     </th>
                   </tr>
                 </thead>
                 <tbody>
-                  {college.historicalCutoffs.map((cutoff, idx) => {
-                    const isCurrentYear = idx === 0;
-                    const gap =
-                      college.applicablePercentile - cutoff.percentile;
-                    const gapColor =
-                      gap >= 0 ? "text-green-600" : "text-orange-600";
+                  {years.map((year, yi) => {
+                    const yearMap = matrix.get(year)!;
+                    const isLatestYear = yi === 0;
+                    // Use the final round's cutoff for the gap calculation
+                    const finalRound = Math.max(...rounds.filter((r) => yearMap.has(r)));
+                    const finalCutoff = yearMap.get(finalRound);
+                    const gap = finalCutoff
+                      ? college.applicablePercentile - finalCutoff.percentile
+                      : null;
 
                     return (
                       <tr
-                        key={`${cutoff.year}-${cutoff.round}-${cutoff.id}`}
-                        className={`border-t border-border/50 ${
-                          isCurrentYear ? "bg-blue-50/50 font-medium" : ""
+                        key={year}
+                        className={`border-t border-border/40 ${
+                          isLatestYear ? "bg-blue-50/50 font-medium" : ""
                         }`}
                       >
-                        <td className="px-3 py-2">
-                          {cutoff.year}
-                          {isCurrentYear && (
-                            <span className="ml-1 text-[10px] text-blue-600 font-semibold">
-                              LATEST
+                        {/* Year cell */}
+                        <td className="px-3 py-2 text-left">
+                          <span>{year}</span>
+                          {isLatestYear && (
+                            <span className="ml-1 text-[9px] uppercase tracking-wide text-blue-600 font-bold">
+                              Latest
                             </span>
                           )}
                         </td>
-                        <td className="px-3 py-2 text-muted-foreground">
-                          {cutoff.branchName}
-                        </td>
-                        <td className="px-3 py-2 text-right">
-                          <span>{cutoff.percentile.toFixed(2)}</span>
-                          {isCurrentYear && (
-                            <span className={`ml-2 text-xs ${gapColor}`}>
-                              ({gap >= 0 ? "+" : ""}{gap.toFixed(2)})
-                            </span>
-                          )}
-                        </td>
-                        <td className="px-3 py-2 text-right text-muted-foreground">
-                          {cutoff.cutoffRank != null
-                            ? cutoff.cutoffRank.toLocaleString("en-IN")
+
+                        {/* Per-round percentile cells */}
+                        {rounds.map((r) => {
+                          const cutoff = yearMap.get(r);
+                          const isLatestCell =
+                            isLatestYear && r === Math.max(...rounds);
+
+                          return (
+                            <td
+                              key={r}
+                              className={`px-3 py-2 text-right tabular-nums ${
+                                !cutoff ? "text-muted-foreground" : ""
+                              }`}
+                            >
+                              {cutoff ? (
+                                <span>
+                                  {cutoff.percentile.toFixed(2)}
+                                  {isLatestCell && gap !== null && (
+                                    <span
+                                      className={`ml-1 text-[10px] font-semibold ${
+                                        gap >= 0
+                                          ? "text-green-600"
+                                          : "text-orange-500"
+                                      }`}
+                                    >
+                                      ({gap >= 0 ? "+" : ""}
+                                      {gap.toFixed(2)})
+                                    </span>
+                                  )}
+                                </span>
+                              ) : (
+                                <span className="text-muted-foreground">—</span>
+                              )}
+                            </td>
+                          );
+                        })}
+
+                        {/* Rank cell — last round of this year */}
+                        <td className="px-3 py-2 text-right text-muted-foreground tabular-nums">
+                          {finalCutoff?.cutoffRank != null
+                            ? finalCutoff.cutoffRank.toLocaleString("en-IN")
                             : "—"}
                         </td>
                       </tr>
@@ -318,82 +390,97 @@ function CollegeCard({ college, isSelected, onSelect }: CollegeCardProps) {
               </table>
             </div>
           ) : (
-            <p className="text-xs text-muted-foreground italic">
-              No historical cutoff data available for this category.
+            <p className="text-xs text-muted-foreground italic px-1">
+              No CAP cutoff data available for your category and seat type.
             </p>
           )}
         </div>
 
-        {/* ----------------------------------------------------------------
-            Section 2 — Placement Numbers (exact figures)
-        ---------------------------------------------------------------- */}
-        {college.placementData ? (
-          <div>
-            <h4 className="text-sm font-semibold mb-2">
-              💼 Placements ({college.placementData.year})
-            </h4>
-            <div className="grid grid-cols-3 gap-3 text-sm">
-              <div className="bg-green-50 border border-green-200 rounded-lg p-3 text-center">
-                <p className="text-xs text-muted-foreground mb-1">
+        {/* ================================================================ */}
+        {/* SECTION 2 — Factual Placement Blocks                             */}
+        {/* ================================================================ */}
+        <div>
+          <h4 className="text-sm font-semibold mb-2 flex items-center gap-1.5">
+            <Award className="w-4 h-4 text-green-600" />
+            Placement Data
+            {college.placementData && (
+              <span className="text-xs font-normal text-muted-foreground ml-1">
+                {college.placementData.isDirectOverride
+                  ? "(verified — institution data)"
+                  : `(${college.placementData.year} academic year)`}
+              </span>
+            )}
+          </h4>
+
+          {college.placementData ? (
+            <div className="grid grid-cols-3 gap-2">
+              {/* Average Package */}
+              <div className="bg-green-50 border border-green-200 rounded-xl p-3 text-center">
+                <DollarSign className="w-4 h-4 text-green-600 mx-auto mb-1 opacity-70" />
+                <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-0.5">
                   Avg Package
                 </p>
-                <p className="font-bold text-green-700 text-base">
+                <p className="font-bold text-green-700 text-sm leading-tight">
                   {formatPackage(college.placementData.averagePackage)}
                 </p>
               </div>
-              <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 text-center">
-                <p className="text-xs text-muted-foreground mb-1">
-                  Highest Package
+
+              {/* Highest Package */}
+              <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-center">
+                <Star className="w-4 h-4 text-emerald-600 mx-auto mb-1 opacity-70" />
+                <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-0.5">
+                  Highest
                 </p>
-                <p className="font-bold text-emerald-700 text-base">
+                <p className="font-bold text-emerald-700 text-sm leading-tight">
                   {formatPackage(college.placementData.highestPackage)}
                 </p>
               </div>
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-center">
-                <p className="text-xs text-muted-foreground mb-1">
+
+              {/* Placement % */}
+              <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-center">
+                <Award className="w-4 h-4 text-blue-600 mx-auto mb-1 opacity-70" />
+                <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-0.5">
                   Placed %
                 </p>
-                <p className="font-bold text-blue-700 text-base">
-                  {college.placementData.placementPercentage.toFixed(0)}%
+                <p className="font-bold text-blue-700 text-sm leading-tight">
+                  {college.placementData.placementPercentage != null
+                    ? `${college.placementData.placementPercentage.toFixed(0)}%`
+                    : "—"}
                 </p>
               </div>
             </div>
-          </div>
-        ) : (
-          // Fallback: show normalized score bar when no exact data is available
-          <div>
-            <h4 className="text-sm font-semibold mb-2">💼 Placement Score</h4>
-            <ScoreBar label="Placement" value={college.placementScore} />
-          </div>
-        )}
-
-        {/* ----------------------------------------------------------------
-            Section 3 — Other Scores
-        ---------------------------------------------------------------- */}
-        <div className="grid grid-cols-2 gap-3">
-          <ScoreBar label="Campus Life" value={college.campusLifeScore} />
-          <ScoreBar
-            label="Infrastructure"
-            value={college.infrastructureScore}
-          />
-          <ScoreBar label="Teaching" value={college.teachingScore} />
-          <ScoreBar
-            label="Industry Exposure"
-            value={college.industryExposureScore}
-          />
+          ) : (
+            <ScoreBar label="Placement Score (normalized)" value={college.placementScore} />
+          )}
         </div>
 
-        {/* ----------------------------------------------------------------
-            Section 4 — Fees
-        ---------------------------------------------------------------- */}
-        <div className="grid grid-cols-2 gap-4 text-sm">
+        {/* ================================================================ */}
+        {/* SECTION 3 — Qualitative Scores                                   */}
+        {/* ================================================================ */}
+        <div className="grid grid-cols-2 gap-x-6 gap-y-3">
+          <ScoreBar label="Campus Life" value={college.campusLifeScore} />
+          <ScoreBar label="Infrastructure" value={college.infrastructureScore} />
+          <ScoreBar label="Teaching Quality" value={college.teachingScore} />
+          <ScoreBar label="Industry Exposure" value={college.industryExposureScore} />
+        </div>
+
+        {/* ================================================================ */}
+        {/* SECTION 4 — Fees                                                 */}
+        {/* ================================================================ */}
+        <div className="grid grid-cols-2 gap-4 text-sm border-t border-border/40 pt-4">
           <div>
-            <p className="text-muted-foreground">Annual Fees</p>
-            <p className="font-semibold">₹{college.fees.toLocaleString("en-IN")}</p>
+            <p className="text-xs text-muted-foreground uppercase tracking-wide mb-0.5">
+              Annual Fees
+            </p>
+            <p className="font-semibold text-foreground">
+              ₹{college.fees.toLocaleString("en-IN")}
+            </p>
           </div>
           <div>
-            <p className="text-muted-foreground">Hostel Fees</p>
-            <p className="font-semibold">
+            <p className="text-xs text-muted-foreground uppercase tracking-wide mb-0.5">
+              Hostel Fees
+            </p>
+            <p className="font-semibold text-foreground">
               {college.hostelAvailable
                 ? `₹${college.hostelFees.toLocaleString("en-IN")}`
                 : "Not Available"}
@@ -401,60 +488,70 @@ function CollegeCard({ college, isSelected, onSelect }: CollegeCardProps) {
           </div>
         </div>
 
-        {/* ----------------------------------------------------------------
-            Section 5 — Student Feedback (AI summary + sentiment badge)
-        ---------------------------------------------------------------- */}
+        {/* ================================================================ */}
+        {/* SECTION 5 — Student Sentiment & Insights Panel                   */}
+        {/* ================================================================ */}
         {college.studentFeedback && (
-          <div className="border border-border rounded-lg p-4 bg-muted/30">
-            <div className="flex items-center justify-between mb-2">
-              <h4 className="text-sm font-semibold flex items-center gap-1">
-                <MessageSquare className="w-4 h-4" /> Student Feedback
+          <div className="border border-border rounded-xl p-4 bg-muted/20 space-y-3">
+            {/* Panel header */}
+            <div className="flex items-center justify-between">
+              <h4 className="text-sm font-semibold flex items-center gap-1.5">
+                <MessageSquare className="w-4 h-4 text-purple-500" />
+                Student Sentiment &amp; Insights
               </h4>
+              {/* Contextual status indicator badge */}
               <Badge
-                variant={sentimentBadge.variant}
-                className={sentimentBadge.className}
+                variant={sentimentMeta.badgeVariant}
+                className={sentimentMeta.badgeClass}
               >
-                {sentimentBadge.label}
+                {sentimentMeta.label}
               </Badge>
             </div>
 
+            {/* Qualitative summary text */}
             <p className="text-xs text-muted-foreground leading-relaxed">
               {showFullSummary
                 ? college.studentFeedback.summary
-                : truncate(college.studentFeedback.summary, 180)}
+                : truncate(college.studentFeedback.summary, 200)}
             </p>
-
-            {college.studentFeedback.summary.length > 180 && (
+            {college.studentFeedback.summary.length > 200 && (
               <button
                 type="button"
-                onClick={() => setShowFullSummary(!showFullSummary)}
-                className="text-xs text-blue-600 hover:underline mt-1"
+                onClick={() => setShowFullSummary((v) => !v)}
+                className="text-xs text-blue-600 hover:underline focus:outline-none"
               >
-                {showFullSummary ? "Show less" : "Read more"}
+                {showFullSummary ? "Show less ↑" : "Read more ↓"}
               </button>
             )}
 
-            <div className="mt-2 flex items-center gap-2">
-              <div className="flex-1 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+            {/* Sentiment score bar with raw value */}
+            <div className="space-y-1">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-muted-foreground">Sentiment score</span>
+                <span className={`font-semibold ${sentimentMeta.textColor}`}>
+                  {Math.round(college.studentFeedback.sentimentScore * 100)}% positive
+                </span>
+              </div>
+              <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
                 <div
-                  className={`h-full rounded-full ${sentimentBadge.barColor}`}
+                  className={`h-full rounded-full transition-all ${sentimentMeta.barColor}`}
                   style={{
                     width: `${college.studentFeedback.sentimentScore * 100}%`,
                   }}
                 />
               </div>
-              <span className="text-xs text-muted-foreground">
-                {Math.round(college.studentFeedback.sentimentScore * 100)}%
-                positive
-              </span>
+              {/* Contextual status indicator text */}
+              <p className="text-[10px] text-muted-foreground">
+                {sentimentMeta.description}
+              </p>
             </div>
           </div>
         )}
 
-        {/* ----------------------------------------------------------------
-            Actions
-        ---------------------------------------------------------------- */}
-        <div className="flex gap-2 pt-1">
+        {/* ================================================================ */}
+        {/* ACTIONS                                                           */}
+        {/* ================================================================ */}
+        <div className="flex gap-2 pt-1 border-t border-border/40">
           <Button
             id={`compare-btn-${college.collegeId}`}
             variant={isSelected ? "default" : "outline"}
@@ -462,7 +559,7 @@ function CollegeCard({ college, isSelected, onSelect }: CollegeCardProps) {
             onClick={onSelect}
             className="flex-1"
           >
-            {isSelected ? "✓ Selected" : "Select for Comparison"}
+            {isSelected ? "✓ Selected for Comparison" : "Select for Comparison"}
           </Button>
           <Link href={`/college/${college.collegeId}`}>
             <Button
@@ -480,51 +577,63 @@ function CollegeCard({ college, isSelected, onSelect }: CollegeCardProps) {
   );
 }
 
-// ---------------------------------------------------------------------------
-// Sentiment Badge Helper
-// ---------------------------------------------------------------------------
+// ============================================================================
+// Sentiment Status Indicator
+// ============================================================================
 
-function getSentimentBadge(score?: number): {
+interface SentimentMeta {
   label: string;
-  variant: "default" | "destructive" | "outline" | "secondary";
-  className: string;
+  description: string;
+  textColor: string;
   barColor: string;
-} {
+  badgeVariant: "default" | "destructive" | "outline" | "secondary";
+  badgeClass: string;
+}
+
+function getSentimentMeta(score?: number): SentimentMeta {
   if (score === undefined || score === null) {
     return {
       label: "No Data",
-      variant: "outline",
-      className: "",
-      barColor: "bg-gray-400",
+      description: "No student reviews have been collected for this college yet.",
+      textColor: "text-muted-foreground",
+      barColor: "bg-gray-300",
+      badgeVariant: "outline",
+      badgeClass: "",
     };
   }
   if (score > 0.6) {
     return {
       label: "Positive ✨",
-      variant: "default",
-      className: "bg-green-600 hover:bg-green-700 text-white",
+      description: "Students are broadly satisfied with their experience here.",
+      textColor: "text-green-600",
       barColor: "bg-green-500",
+      badgeVariant: "default",
+      badgeClass: "bg-green-600 hover:bg-green-700 text-white border-0",
     };
   }
   if (score < 0.4) {
     return {
       label: "Critical ⚠️",
-      variant: "destructive",
-      className: "",
+      description: "Students have raised significant concerns. Review carefully before applying.",
+      textColor: "text-red-600",
       barColor: "bg-red-500",
+      badgeVariant: "destructive",
+      badgeClass: "",
     };
   }
   return {
-    label: "Mixed 🔄",
-    variant: "secondary",
-    className: "",
+    label: "Neutral 🔄",
+    description: "Mixed opinions — some strong points, some noted concerns.",
+    textColor: "text-yellow-600",
     barColor: "bg-yellow-400",
+    badgeVariant: "secondary",
+    badgeClass: "",
   };
 }
 
-// ---------------------------------------------------------------------------
+// ============================================================================
 // Score Bar
-// ---------------------------------------------------------------------------
+// ============================================================================
 
 interface ScoreBarProps {
   label: string;
@@ -532,32 +641,29 @@ interface ScoreBarProps {
 }
 
 function ScoreBar({ label, value }: ScoreBarProps) {
-  const percentage = Math.min(100, Math.max(0, value));
-  const getColor = (val: number) => {
-    if (val >= 80) return "bg-green-500";
-    if (val >= 60) return "bg-yellow-500";
-    return "bg-red-400";
-  };
+  const pct = Math.min(100, Math.max(0, value));
+  const color =
+    pct >= 80 ? "bg-green-500" : pct >= 60 ? "bg-yellow-500" : "bg-red-400";
 
   return (
     <div>
       <div className="flex justify-between items-center mb-1">
-        <p className="text-xs font-medium">{label}</p>
-        <p className="text-xs font-semibold">{value.toFixed(0)}/100</p>
+        <p className="text-xs font-medium text-foreground/80">{label}</p>
+        <p className="text-xs font-semibold tabular-nums">{value.toFixed(0)}/100</p>
       </div>
-      <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+      <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden">
         <div
-          className={`h-full rounded-full transition-all ${getColor(value)}`}
-          style={{ width: `${percentage}%` }}
+          className={`h-full rounded-full transition-all ${color}`}
+          style={{ width: `${pct}%` }}
         />
       </div>
     </div>
   );
 }
 
-// ---------------------------------------------------------------------------
+// ============================================================================
 // Utility
-// ---------------------------------------------------------------------------
+// ============================================================================
 
 function truncate(text: string, maxLen: number): string {
   if (text.length <= maxLen) return text;
