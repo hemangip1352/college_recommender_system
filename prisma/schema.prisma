@@ -25,6 +25,7 @@ model College {
   teachingScore          Float     @default(0)
   placementScore         Float     @default(0)
   industryExposureScore  Float     @default(0)
+  homeUniversitySeats    Boolean   @default(true)  // true = college belongs to a university that has HU quota seats
 
   branches    Branch[]
   cutoffs     Cutoff[]
@@ -56,8 +57,9 @@ model Cutoff {
   round       Int
   category    String  // SC, ST, OBC, General, etc.
   gender      String  // M, F
-  seatType    String  // Unreserved, Reserved, etc.
+  seatType    String  // CAP seat type code, e.g. GOPENH, LOBCO, TFWS, etc.
   percentile  Float
+  cutoffRank  Int?    // Official rank from DTE PDF (some PDFs list rank alongside percentile)
 
   college College @relation(fields: [collegeId], references: [id], onDelete: Cascade)
   branch  Branch  @relation(fields: [branchId], references: [id], onDelete: Cascade)
@@ -97,11 +99,12 @@ model Review {
 }
 
 model CollegeSummary {
-  id         Int     @id @default(autoincrement())
-  collegeId  Int     @unique
-  summary    String  @db.Text
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id             Int      @id @default(autoincrement())
+  collegeId      Int      @unique
+  summary        String   @db.Text
+  sentimentScore Float    @default(0)  // Aggregate sentiment: positive > 0.5, negative < 0.5
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   college College @relation(fields: [collegeId], references: [id], onDelete: Cascade)
 
@@ -109,16 +112,17 @@ model CollegeSummary {
 }
 
 model User {
-  id                 Int     @id @default(autoincrement())
-  sessionId          String  @unique
+  id                 Int      @id @default(autoincrement())
+  sessionId          String   @unique
   mhtcetPercentile   Float
   jeePercentile      Float?
+  twelfthPercentage  Float?   // HSC / 12th board percentage (used for eligibility checks)
   category           String
   gender             String
   homeUniversity     String
   branchPreferences  String[] // Array of branch names
   cityPreferences    String[] // Array of cities
-  priorityWeights    Json  @db.Json // JSON string of priority weights
+  priorityWeights    Json  @db.Json // JSON object of priority weights keyed by metric name
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 }

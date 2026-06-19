@@ -8,6 +8,7 @@ const prisma = new PrismaClient();
 const RecommendationSchema = z.object({
   mhtcetPercentile: z.number().min(0).max(100),
   jeePercentile: z.number().min(0).max(100).optional(),
+  twelfthPercentage: z.number().min(0).max(100).optional(),
   category: z.string(),
   gender: z.string(),
   homeUniversity: z.string(),
