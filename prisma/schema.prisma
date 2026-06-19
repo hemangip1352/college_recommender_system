@@ -1,0 +1,124 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model College {
+  id                      Int       @id @default(autoincrement())
+  collegeCode            String    @unique
+  collegeName            String
+  city                   String
+  district               String
+  university             String
+  website                String?
+  fees                   Float     @default(0)
+  hostelAvailable        Boolean   @default(false)
+  hostelFees             Float     @default(0)
+  infrastructureScore    Float     @default(0)
+  campusLifeScore        Float     @default(0)
+  teachingScore          Float     @default(0)
+  placementScore         Float     @default(0)
+  industryExposureScore  Float     @default(0)
+
+  branches    Branch[]
+  cutoffs     Cutoff[]
+  placements  Placement[]
+  reviews     Review[]
+  summaries   CollegeSummary[]
+
+  @@index([university])
+  @@index([city])
+}
+
+model Branch {
+  id         Int     @id @default(autoincrement())
+  collegeId  Int
+  branchName String
+
+  college College  @relation(fields: [collegeId], references: [id], onDelete: Cascade)
+  cutoffs Cutoff[]
+
+  @@unique([collegeId, branchName])
+  @@index([collegeId])
+}
+
+model Cutoff {
+  id          Int     @id @default(autoincrement())
+  collegeId   Int
+  branchId    Int
+  year        Int
+  round       Int
+  category    String  // SC, ST, OBC, General, etc.
+  gender      String  // M, F
+  seatType    String  // Unreserved, Reserved, etc.
+  percentile  Float
+
+  college College @relation(fields: [collegeId], references: [id], onDelete: Cascade)
+  branch  Branch  @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  @@unique([collegeId, branchId, year, round, category, gender, seatType])
+  @@index([collegeId])
+  @@index([branchId])
+  @@index([year])
+}
+
+model Placement {
+  id                  Int     @id @default(autoincrement())
+  collegeId           Int
+  year                Int
+  averagePackage      Float
+  medianPackage       Float
+  highestPackage      Float
+  placementPercentage Float
+
+  college College @relation(fields: [collegeId], references: [id], onDelete: Cascade)
+
+  @@unique([collegeId, year])
+  @@index([collegeId])
+}
+
+model Review {
+  id         Int     @id @default(autoincrement())
+  collegeId  Int
+  source     String  // "Student", "Alumni", etc.
+  reviewText String  @db.Text
+  sentimentScore Float @default(0)
+  createdAt  DateTime @default(now())
+
+  college College @relation(fields: [collegeId], references: [id], onDelete: Cascade)
+
+  @@index([collegeId])
+}
+
+model CollegeSummary {
+  id         Int     @id @default(autoincrement())
+  collegeId  Int     @unique
+  summary    String  @db.Text
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  college College @relation(fields: [collegeId], references: [id], onDelete: Cascade)
+
+  @@index([collegeId])
+}
+
+model User {
+  id                 Int     @id @default(autoincrement())
+  sessionId          String  @unique
+  mhtcetPercentile   Float
+  jeePercentile      Float?
+  category           String
+  gender             String
+  homeUniversity     String
+  branchPreferences  String[] // Array of branch names
+  cityPreferences    String[] // Array of cities
+  priorityWeights    Json  @db.Json // JSON string of priority weights
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+}
